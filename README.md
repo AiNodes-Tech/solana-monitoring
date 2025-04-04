@@ -107,11 +107,12 @@ sudo systemctl restart node_exporter
 ### Create directory for script
 ```bash
 mkdir -p /home/sol/solanamonitoring
+cd /home/sol/solanamonitoring
 ```
 
-### Change permissions for script
+### Download script and change permissions
 ```bash
-chmod +x monitor.sh
+wget -O monitor.sh https://raw.githubusercontent.com/AiNodes-Tech/solana-monitoring/refs/heads/main/monitor.sh && chmod +x monitor.sh
 ```
 
 ### Checking the all works
