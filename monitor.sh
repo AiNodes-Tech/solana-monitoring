@@ -87,7 +87,6 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
    status=1 #status 0=validating 1=up 2=error 3=delinquent 4=stopped
    blockHeight=$(jq -r '.slot' <<<$validatorBlockTime)
    blockHeightTime=$(jq -r '.timestamp' <<<$validatorBlockTime)
-   metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\"} $status"$'\n'
    if [ -n "$blockHeightTime" ]; then blockHeightFromNow=$(expr $(date +%s) - $blockHeightTime); fi
    if [ -n "$delinquentValidatorInfo" ]; then
       status=3
@@ -190,7 +189,6 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
       metricsData+="nodemonitor_pctEpochElapsed{pubkey=\"$identityPubkey\"} $pctEpochElapsed"$'\n'
       metricsData+="nodemonitor_validatorCreditsCurrent{pubkey=\"$identityPubkey\"} $validatorCreditsCurrent"$'\n'
       metricsData+="nodemonitor_validatorCreditsMax{pubkey=\"$identityPubkey\"} $validatorCreditsMax"$'\n'
-      metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\"} $status"$'\n'
       metricsData+="nodemonitor_epochEnds{pubkey=\"$identityPubkey\"} $epochEnds"$'\n'
       metricsData+="nodemonitor_tps{pubkey=\"$identityPubkey\"} $tps"$'\n'
       metricsData+="nodemonitor_pctVote{pubkey=\"$identityPubkey\"} $pctVote"$'\n'
@@ -199,7 +197,7 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
    fi
 else
    status=2
-   metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\"} $status"$'\n'
 fi
 
+metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\"} $status"$'\n'
 echo "$metricsData" > "$metricsFile"
