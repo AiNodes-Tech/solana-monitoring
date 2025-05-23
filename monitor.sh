@@ -199,5 +199,5 @@ else
    status=2
 fi
 
-metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\"} $status"$'\n'
+metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\", voteAccountPubkey=\"$voteAccount\"} $status"$'\n'
 echo "$metricsData" > "$metricsFile"
