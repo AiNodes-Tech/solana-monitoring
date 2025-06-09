@@ -71,9 +71,10 @@ fi
 blockProduction=$($cli block-production --url $rpcURL --output json-compact 2>&- | grep -v Note:)
 validatorBlockProduction=$(jq -r '.leaders[] | select(.identityPubkey == '\"$identityPubkey\"')' <<<$blockProduction)
 validators=$($cli validators --url $rpcURL --output json-compact 2>&-)
-currentValidatorInfo=$(jq -r '.validators[] | select(.voteAccountPubkey == '\"$voteAccount\"')' <<<$validators)
-delinquentValidatorInfo=$(jq -r '.validators[] | select(.voteAccountPubkey == '\"$voteAccount\"' and .delinquent == true)' <<<$validators)
-topVoteValidator=$(jq -r '.validators | max_by(.epochCredits)' <<<$validators)
+validatorsWithRank=$(jq -r '.validators | sort_by(-.epochCredits) | to_entries | map(.value + {rank: (.key + 1)})' <<<$validators)
+currentValidatorInfo=$(jq -r '.[] | select(.voteAccountPubkey == '\"$voteAccount\"')' <<<$validatorsWithRank)
+delinquentValidatorInfo=$(jq -r '.[] | select(.voteAccountPubkey == '\"$voteAccount\"' and .delinquent == true)' <<<$validatorsWithRank)
+topVoteValidator=$(jq -r '. | max_by(.epochCredits)' <<<$validatorsWithRank)
 topVoteValidatorCredits=$(jq -r '.epochCredits' <<<$topVoteValidator)
 
 #Grab on boarding number for testnet node in Solana foundation delegation program
@@ -83,30 +84,14 @@ if [[ -z "$sfdpOnboardingNumber" || "$sfdpOnboardingNumber" == 'null' ]]; then s
 
 
 metricsData=""
+metricsData+="nodemonitor_top_vote_credits{pubkey=\"$identityPubkey\"} $topVoteValidatorCredits"$'\n'
+metricsData+="nodemonitor_solanaPrice{pubkey=\"$identityPubkey\"} $solanaPrice"$'\n'
 if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$validatorBlockTimeTest" -eq "1") ]]; then
    status=1 #status 0=validating 1=up 2=error 3=delinquent 4=stopped
    blockHeight=$(jq -r '.slot' <<<$validatorBlockTime)
    blockHeightTime=$(jq -r '.timestamp' <<<$validatorBlockTime)
    if [ -n "$blockHeightTime" ]; then blockHeightFromNow=$(expr $(date +%s) - $blockHeightTime); fi
-   if [ -n "$delinquentValidatorInfo" ]; then
-      status=3
-      activatedStake=$(jq -r '.activatedStake' <<<$delinquentValidatorInfo)
-      if [ "$format" == "SOL" ]; then activatedStake=$(echo "scale=2 ; $activatedStake / 1000000000.0" | bc); fi
-      credits=$(jq -r '.credits' <<<$delinquentValidatorInfo)
-      version=$(jq -r '.version' <<<$delinquentValidatorInfo | sed 's/ /-/g')
-      version2=${version//./}
-      commission=$(jq -r '.commission' <<<$delinquentValidatorInfo)
-      rootSlot=$(jq -r '.rootSlot' <<<$delinquentValidatorInfo)
-      lastVote=$(jq -r '.lastVote' <<<$delinquentValidatorInfo)
-
-      metricsData+="nodemonitor_rootSlot{pubkey=\"$identityPubkey\"} $rootSlot"$'\n'
-      metricsData+="nodemonitor_lastVote{pubkey=\"$identityPubkey\"} $lastVote"$'\n'
-      metricsData+="nodemonitor_version{pubkey=\"$identityPubkey\"} $version2"$'\n'
-      metricsData+="nodemonitor_activatedStake{pubkey=\"$identityPubkey\"} $activatedStake"$'\n'
-      metricsData+="nodemonitor_commission{pubkey=\"$identityPubkey\"} $commission"$'\n'
-      metricsData+="nodemonitor_credits{pubkey=\"$identityPubkey\"} $credits"$'\n'
-      metricsData+="nodemonitor_solanaPrice{pubkey=\"$identityPubkey\"} $solanaPrice"$'\n'
-   elif [ -n "$currentValidatorInfo" ]; then
+   if [ -n "$currentValidatorInfo" ]; then
       status=0
       activatedStake=$(jq -r '.activatedStake' <<<$currentValidatorInfo)
       credits=$(jq -r '.credits' <<<$currentValidatorInfo)
@@ -139,6 +124,17 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
       totalCurrentStake=$(jq -r '.totalCurrentStake' <<<$validators)
       pctVersionActive=$(echo "scale=2 ; 100 * $versionActiveStake / $totalCurrentStake" | bc)
       pctNewerVersions=$(echo "scale=2 ; 100 * $stakeNewerVersions / $totalCurrentStake" | bc)
+      epochCredits=$(jq -r '.epochCredits' <<<$currentValidatorInfo)
+      rank=$(jq -r '.rank' <<<$currentValidatorInfo)
+
+      leaderSchedule=$($cli leader-schedule --url $rpcURL --output json-compact 2>&-)
+      validatorLeaderSlots=$(jq -r '.leaderScheduleEntries[] | select(.leader == '\"$identityPubkey\"')' <<<$leaderSchedule)
+      currentSlot=$($cli slot)
+      nextValidatorSlot=$(jq --argjson currentSlot "$currentSlot" -r 'select(.slot > $currentSlot) | .slot' <<<$validatorLeaderSlots | head -n1)
+      deltaSlots=$(($nextValidatorSlot - $currentSlot))
+      deltaSeconds=$(echo "$deltaSlots * 0.4" | bc)
+      now=$(date +%s)
+      nextValidatorSlotTime=$((( now + ${deltaSeconds%.*}) * 1000 ))
 
       metricsData+="nodemonitor_leaderSlots{pubkey=\"$identityPubkey\"} $leaderSlots"$'\n'
       metricsData+="nodemonitor_rootSlot{pubkey=\"$identityPubkey\"} $rootSlot"$'\n'
@@ -153,8 +149,11 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
       metricsData+="nodemonitor_commission{pubkey=\"$identityPubkey\"} $commission"$'\n'
       metricsData+="nodemonitor_activatedStake{pubkey=\"$identityPubkey\"} $activatedStake"$'\n'
       metricsData+="nodemonitor_credits{pubkey=\"$identityPubkey\"} $credits"$'\n'
-      metricsData+="nodemonitor_solanaPrice{pubkey=\"$identityPubkey\"} $solanaPrice"$'\n'
-      metricsData+="nodemonitor_top_vote_credits{pubkey=\"$identityPubkey\"} $topVoteValidatorCredits"$'\n'
+      metricsData+="nodemonitor_epoch_credits{pubkey=\"$identityPubkey\"} $epochCredits"$'\n'
+      metricsData+="nodemonitor_rank{pubkey=\"$identityPubkey\"} $rank"$'\n'
+      if [ -n "$nextValidatorSlotTime" ]; then
+         metricsData+="nodemonitor_next_validator_slot{pubkey=\"$identityPubkey\"} $nextValidatorSlotTime"$'\n'
+      fi
    else status=2; fi
 
    if [ "$additionalInfo" == "on" ]; then
@@ -194,6 +193,10 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
       metricsData+="nodemonitor_pctVote{pubkey=\"$identityPubkey\"} $pctVote"$'\n'
       metricsData+="nodemonitor_validatorScore{pubkey=\"$identityPubkey\"} $validatorScore"$'\n'
       metricsData+="nodemonitor_sfdp_onboarding_number{pubkey=\"$identityPubkey\"} $sfdpOnboardingNumber"$'\n'
+   fi
+
+   if [ -n "$delinquentValidatorInfo" ]; then
+      status=3
    fi
 else
    status=2
