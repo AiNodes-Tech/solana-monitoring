@@ -72,7 +72,7 @@ fi
 blockProduction=$($cli block-production --url $rpcURL --output json-compact 2>&- | grep -v Note:)
 validatorBlockProduction=$(jq -r '.leaders[] | select(.identityPubkey == '\"$identityPubkey\"')' <<<$blockProduction)
 validators=$($cli validators --url $rpcURL --output json-compact 2>&-)
-validatorsWithRank=$(jq -r '.validators | sort_by(-.epochCredits) | to_entries | map(.value + {rank: (.key + 1)})' <<<$validators)
+validatorsWithRank=$(jq -r '.validators | sort_by(-.epochCredits, -.activatedStake) | to_entries | map(.value + {rank: (.key + 1)})' <<<$validators)
 currentValidatorInfo=$(jq -r '.[] | select(.voteAccountPubkey == '\"$voteAccount\"')' <<<$validatorsWithRank)
 delinquentValidatorInfo=$(jq -r '.[] | select(.voteAccountPubkey == '\"$voteAccount\"' and .delinquent == true)' <<<$validatorsWithRank)
 topVoteValidator=$(jq -r '. | max_by(.epochCredits)' <<<$validatorsWithRank)
