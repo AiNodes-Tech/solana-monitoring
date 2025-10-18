@@ -15,6 +15,7 @@ additionalInfo="on"               # set to 'on' for additional general metrics l
 binDir=""                         # auto detection of the solana binary directory can fail or an alternative custom installation is preferred, in case insert like $HOME/solana/target/release
 rpcURL="http://127.0.0.1:8899"    # default is localhost with port number autodiscovered, alternatively it can be specified like http://custom.rpc.com:port. For example https://solana-testnet-rpc.publicnode.com
 format="SOL"                      # amounts shown in 'SOL' instead of lamports
+check_dz_balance="off"
 #####  END CONFIG  ##################################################################################################
 
 if [ -n "$binDir" ]; then
@@ -200,6 +201,15 @@ if [[ ((-n "$currentValidatorInfo" || "$delinquentValidatorInfo")) ]] || [[ ("$v
    fi
 else
    status=2
+fi
+
+if [ "$check_dz_balance" == "on" ]; then
+   dzAddress=$(doublezero address)
+   dzBalance=$(doublezero-solana revenue-distribution fetch validator-deposits \
+       -u mainnet-beta \
+       --node-id $dzAddress \
+       | awk 'NF && NR>2 {print $NF}' | head -1)
+   metricsData+="nodemonitor_dz_balance{pubkey=\"$identityPubkey\", dz_address=\"$dzAddress\"} $dzBalance"$'\n'
 fi
 
 metricsData+="nodemonitor_status{pubkey=\"$identityPubkey\", voteAccountPubkey=\"$voteAccount\"} $status"$'\n'
