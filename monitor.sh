@@ -208,7 +208,7 @@ if [ "$check_dz_balance" == "on" ]; then
    dzBalance=$(doublezero-solana revenue-distribution fetch validator-deposits \
        -u mainnet-beta \
        --node-id $dzAddress \
-       | awk 'NF && NR>2 {print $NF}' | head -1)
+      | awk -F'|' 'NR>2 && NF {gsub(/^[ \t]+|[ \t]+$/, "", $3); print $4}' | head -1)
    metricsData+="nodemonitor_dz_balance{pubkey=\"$identityPubkey\", dz_address=\"$dzAddress\"} $dzBalance"$'\n'
 fi
 
